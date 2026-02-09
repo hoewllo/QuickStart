@@ -1,0 +1,182 @@
+#include "mainwindow.h"
+#include "../ui/ui_mainwindow.h"
+
+#include <QMessageBox>
+#include <QProcess>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QDir>
+#include <QPushButton>
+
+MainWindow::MainWindow(AppItem *currentItem, QWidget *parent)
+    : QMainWindow(parent)
+    , ui(new Ui::MainWindow)
+    , currentItem(currentItem)
+    , rootItem(nullptr)
+{
+    ui->setupUi(this);
+    
+    // 加载配置
+    loadConfig();
+    
+    // 如果没有传入当前节点，使用根节点
+    if (!this->currentItem) {
+        this->currentItem = rootItem;
+    }
+    
+    // 设置窗口标题
+    setWindowTitle(QString("应用启动器 - %1").arg(this->currentItem->getName().isEmpty() ? "主界面" : this->currentItem->getName()));
+    
+    // 连接信号槽
+    connect(ui->iconListWidget, &QListWidget::itemClicked, this, &MainWindow::onIconListItemClicked);
+    
+    // 刷新图标列表
+    refreshIconList();
+}
+
+MainWindow::~MainWindow()
+{
+    delete ui;
+}
+
+void MainWindow::loadConfig()
+{
+    QFile configFile(CONFIG_FILE_PATH);
+    if (configFile.exists() && configFile.open(QIODevice::ReadOnly)) {
+        QByteArray data = configFile.readAll();
+        configFile.close();
+        
+        QJsonDocument doc = QJsonDocument::fromJson(data);
+        if (!doc.isNull() && doc.isObject()) {
+            rootItem = new AppItem();
+            rootItem->fromJson(doc.object());
+        } else {
+            // 配置文件格式错误，创建空根节点
+            rootItem = new AppItem("主界面", "");
+        }
+    } else {
+        // 配置文件不存在，创建空根节点
+        rootItem = new AppItem("主界面", "");
+    }
+}
+
+void MainWindow::saveConfig()
+{
+    if (!rootItem) return;
+    
+    QJsonObject rootObj = rootItem->toJson();
+    QJsonDocument doc(rootObj);
+    
+    QFile configFile(CONFIG_FILE_PATH);
+    if (configFile.open(QIODevice::WriteOnly)) {
+        configFile.write(doc.toJson());
+        configFile.close();
+    } else {
+        QMessageBox::warning(this, tr("提示"), tr("保存配置文件失败，请检查文件权限"));
+    }
+}
+
+void MainWindow::refreshIconList()
+{
+    if (!currentItem) return;
+    
+    ui->iconListWidget->clear();
+    
+    // 添加子应用项
+    for (AppItem *app : currentItem->getSubApps()) {
+        QListWidgetItem *item = new QListWidgetItem();
+        item->setText(app->getName());
+        item->setIcon(QIcon(app->getIconPath()));
+        item->setData(Qt::UserRole, QVariant::fromValue<void*>(static_cast<void*>(app)));
+        ui->iconListWidget->addItem(item);
+    }
+    
+    // 添加功能项
+    for (FuncItem *func : currentItem->getFuncs()) {
+        QListWidgetItem *item = new QListWidgetItem();
+        item->setText(func->getName());
+        item->setIcon(QIcon(func->getIconPath()));
+        item->setData(Qt::UserRole, QVariant::fromValue<void*>(static_cast<void*>(func)));
+        ui->iconListWidget->addItem(item);
+    }
+    
+    // 添加+添加项
+    QListWidgetItem *addItem = new QListWidgetItem();
+    addItem->setText("+添加");
+    addItem->setData(Qt::UserRole, QVariant::fromValue<void*>(nullptr));
+    ui->iconListWidget->addItem(addItem);
+}
+
+void MainWindow::onIconListItemClicked(QListWidgetItem *item)
+{
+    if (!item) return;
+    
+    void *data = item->data(Qt::UserRole).value<void*>();
+    
+    if (!data) {
+        // +添加项被点击
+        QMessageBox msgBox(this);
+        msgBox.setWindowTitle(tr("选择添加类型"));
+        msgBox.setText(tr("请选择要添加的类型："));
+        
+        // 存储按钮指针以便比较
+        QPushButton *appBtn = msgBox.addButton(tr("添加应用"), QMessageBox::ActionRole);
+        QPushButton *funcBtn = msgBox.addButton(tr("添加功能"), QMessageBox::ActionRole);
+        msgBox.addButton(tr("取消"), QMessageBox::RejectRole);
+        
+        msgBox.exec();
+        
+        QAbstractButton *clickedBtn = msgBox.clickedButton();
+        if (clickedBtn == appBtn) {
+            onAddAppClicked();
+        } else if (clickedBtn == funcBtn) {
+            onAddFuncClicked();
+        }
+        return;
+    }
+    
+    // 检查是AppItem还是FuncItem
+    AppItem *appItem = reinterpret_cast<AppItem*>(data);
+    FuncItem *funcItem = reinterpret_cast<FuncItem*>(data);
+    
+    // 尝试转换为AppItem
+    if (appItem && currentItem->getSubApps().contains(appItem)) {
+        // 打开新的MainWindow显示该应用项
+        MainWindow *newWindow = new MainWindow(appItem, this);
+        newWindow->show();
+    } 
+    // 尝试转换为FuncItem
+    else if (funcItem && currentItem->getFuncs().contains(funcItem)) {
+        // 运行所有命令
+        for (const QString &cmd : funcItem->getCmds()) {
+            QProcess::startDetached(cmd);
+        }
+    }
+}
+
+void MainWindow::onAddAppClicked()
+{
+    AppConfigDialog dialog(this);
+    if (dialog.exec() == QDialog::Accepted) {
+        AppItem *newApp = dialog.getNewApp();
+        if (newApp) {
+            currentItem->addSubApp(newApp);
+            refreshIconList();
+            saveConfig();
+        }
+    }
+}
+
+void MainWindow::onAddFuncClicked()
+{
+    FuncConfigDialog dialog(this);
+    if (dialog.exec() == QDialog::Accepted) {
+        FuncItem *newFunc = dialog.getNewFunc();
+        if (newFunc) {
+            currentItem->addFunc(newFunc);
+            refreshIconList();
+            saveConfig();
+        }
+    }
+}
