@@ -48,12 +48,19 @@ set(UI_FILES
     ui/funcconfigdialog.ui
 )
 
+# 资源文件
+set(RESOURCE_FILES
+    resources/app_icon.rc
+    resources.qrc
+)
+
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
-    qt_add_executable(QtAppLauncher
+        qt_add_executable(QtAppLauncher
         MANUAL_FINALIZATION
         ${SOURCES}
         ${HEADERS}
         ${UI_FILES}
+        ${RESOURCE_FILES}
     )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET QtAppLauncher APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
@@ -64,8 +71,9 @@ else()
             ${SOURCES}
             ${HEADERS}
             ${UI_FILES}
-        )
-    endif()
+            ${RESOURCE_FILES}
+)
+endif()
 
 target_include_directories(QtAppLauncher PRIVATE include)
 target_include_directories(QtAppLauncher PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
@@ -75,6 +83,7 @@ target_link_libraries(QtAppLauncher PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
 set_target_properties(QtAppLauncher PROPERTIES
     WIN32_EXECUTABLE TRUE
     MACOSX_BUNDLE FALSE
+    RC_ICONS "${CMAKE_CURRENT_SOURCE_DIR}/resources/app_icon.ico"
 )
 
 # 安装目标

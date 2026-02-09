@@ -11,6 +11,7 @@
 #include <QPushButton>
 #include <QMenu>
 #include <QAction>
+#include <QIcon>  // 添加QIcon头文件
 
 MainWindow::MainWindow(AppItem *currentItem, QWidget *parent)
     : QMainWindow(parent)
@@ -23,6 +24,9 @@ MainWindow::MainWindow(AppItem *currentItem, QWidget *parent)
     , contextMenuItem(nullptr)
 {
     ui->setupUi(this);
+    
+    // 设置窗口图标
+    setWindowIcon(QIcon(":/app_icon.ico"));
     
     // 加载配置
     loadConfig();
