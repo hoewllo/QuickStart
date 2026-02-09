@@ -12,6 +12,8 @@
 #include <QMenu>
 #include <QAction>
 #include <QIcon>  // 添加QIcon头文件
+#include <QDesktopServices>
+#include <QUrl>
 
 MainWindow::MainWindow(AppItem *currentItem, QWidget *parent)
     : QMainWindow(parent)
@@ -22,11 +24,36 @@ MainWindow::MainWindow(AppItem *currentItem, QWidget *parent)
     , editAction(nullptr)
     , deleteAction(nullptr)
     , contextMenuItem(nullptr)
+    //, actionNew(nullptr)
+    , actionOpen_config(nullptr)
+    , actionExit(nullptr)
+    , actionQuickStart(nullptr)
+    , actionQt(nullptr)
+    , actionApp(nullptr)
+    , actionFunc(nullptr)
 {
-    ui->setupUi(this);
+        ui->setupUi(this);
     
     // 设置窗口图标
     setWindowIcon(QIcon(":/app_icon.ico"));
+    
+        // 获取菜单动作
+    //actionNew = ui->actionNew;
+    actionOpen_config = ui->actionOpen_config;
+    actionExit = ui->actionExit;
+    actionQuickStart = ui->actionQuickStart;
+    actionQt = ui->actionQt;
+    actionApp = ui->actionApp;
+    actionFunc = ui->actionFunc;
+    
+    // 连接菜单动作
+    //connect(actionNew, &QAction::triggered, this, &MainWindow::onNewAction);
+    connect(actionOpen_config, &QAction::triggered, this, &MainWindow::onOpenConfig);
+    connect(actionExit, &QAction::triggered, this, &MainWindow::onExit);
+    connect(actionQuickStart, &QAction::triggered, this, &MainWindow::onAboutQuickStart);
+    connect(actionQt, &QAction::triggered, this, &MainWindow::onAboutQt);
+    connect(actionApp, &QAction::triggered, this, &MainWindow::onAddAppClicked);
+    connect(actionFunc, &QAction::triggered, this, &MainWindow::onAddFuncClicked);
     
     // 加载配置
     loadConfig();
@@ -324,4 +351,52 @@ void MainWindow::onAddFuncClicked()
             saveConfig();
         }
     }
+}
+
+/*
+void MainWindow::onNewAction()
+{
+    // 导航回到主界面（根节点）
+    if (currentItem != rootItem) {
+        currentItem = rootItem;
+        refreshIconList();
+        setWindowTitle(QString("应用启动器 - 主界面"));
+    }
+}
+*/
+
+
+void MainWindow::onOpenConfig()
+{
+    // 打开配置文件
+    QString configPath = QDir::current().absoluteFilePath(CONFIG_FILE_PATH);
+    QFileInfo fileInfo(configPath);
+    
+    if (fileInfo.exists()) {
+        // 使用系统默认程序打开配置文件
+        QUrl fileUrl = QUrl::fromLocalFile(configPath);
+        QDesktopServices::openUrl(fileUrl);
+    } else {
+        QMessageBox::warning(this, tr("打开配置"), 
+            tr("配置文件不存在：%1").arg(configPath));
+    }
+}
+
+void MainWindow::onExit()
+{
+    // 退出
+    QApplication::quit();
+}
+
+void MainWindow::onAboutQuickStart()
+{
+    // ����QuickStart
+        QMessageBox::about(this, tr("关于QuickStart"), 
+        AppConfig::aboutHtml());
+}
+
+void MainWindow::onAboutQt()
+{
+    // 关于Qt
+    QMessageBox::aboutQt(this, tr("关于Qt"));
 }

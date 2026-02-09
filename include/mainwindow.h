@@ -6,6 +6,7 @@
 #include "appitem.h"
 #include "appconfigdialog.h"
 #include "funcconfigdialog.h"
+#include "config.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -28,6 +29,11 @@ private slots:
     void showContextMenu(const QPoint &pos);
     void onEditItem();
     void onDeleteItem();
+    //void onNewAction();
+    void onOpenConfig();
+    void onExit();
+    void onAboutQuickStart();
+    void onAboutQt();
 
 private:
     void refreshIconList();
@@ -45,6 +51,15 @@ private:
     QAction *editAction;
     QAction *deleteAction;
     QListWidgetItem *contextMenuItem;
+
+    // 主菜单动作
+    //QAction *actionNew;
+    QAction *actionOpen_config;
+    QAction *actionExit;
+    QAction *actionQuickStart;
+    QAction *actionQt;
+    QAction *actionApp;
+    QAction *actionFunc;
 };
 #endif // MAINWINDOW_H
 
