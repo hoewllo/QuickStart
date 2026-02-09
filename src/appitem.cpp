@@ -1,5 +1,8 @@
 #include "appitem.h"
+#include "icongenerator.h"
 #include <QJsonArray>
+#include <QFile>
+#include <QFileInfo>
 
 AppItem::AppItem(QObject *parent)
     : QObject(parent)
@@ -28,6 +31,20 @@ AppItem::~AppItem()
             func->deleteLater();
         }
     }
+}
+
+QIcon AppItem::getIcon() const
+{
+    // 如果图标路径不为空且文件存在，使用指定图标
+    if (!iconPath.isEmpty()) {
+        QFileInfo fileInfo(iconPath);
+        if (fileInfo.exists()) {
+            return QIcon(iconPath);
+        }
+    }
+    
+    // 否则使用默认图标生成器
+    return IconGenerator::generateDefaultIcon(name);
 }
 
 void AppItem::addSubApp(AppItem *app)

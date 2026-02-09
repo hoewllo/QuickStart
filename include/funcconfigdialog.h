@@ -14,20 +14,25 @@ class FuncConfigDialog : public QDialog
 
 public:
     explicit FuncConfigDialog(QWidget *parent = nullptr);
+    explicit FuncConfigDialog(FuncItem *existingItem, QWidget *parent = nullptr);
     ~FuncConfigDialog();
     
     FuncItem* getNewFunc() const;
 
 private slots:
     void onSelectIconClicked();
-    void onAddCmdClicked();
+    void onAddCmdClicked();          // 输入命令
+    void onSelectExeClicked();       // 选择可执行文件
     void onDelCmdClicked();
     void onConfirmClicked();
     void onCancelClicked();
 
 private:
+    void initFromItem(FuncItem *item);
+    
     Ui::FuncConfigDialog *ui;
     FuncItem *newFunc;
+    FuncItem *existingItem;
 };
 
 #endif // FUNCCONFIGDIALOG_H

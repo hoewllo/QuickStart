@@ -15,6 +15,11 @@ find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
 # 设置UI文件目录
 set(CMAKE_AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/ui")
 
+# 设置构建输出目录
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+
 # 源文件
 set(SOURCES
     src/main.cpp
@@ -23,6 +28,7 @@ set(SOURCES
     src/funcitem.cpp
     src/appconfigdialog.cpp
     src/funcconfigdialog.cpp
+    src/icongenerator.cpp  # 添加图标生成器
 )
 
 # 头文件
@@ -32,6 +38,7 @@ set(HEADERS
     include/funcitem.h
     include/appconfigdialog.h
     include/funcconfigdialog.h
+    include/icongenerator.h  # 添加图标生成器头文件
 )
 
 # UI文件

@@ -66,22 +66,35 @@
          <item>
           <widget class="QPushButton" name="addCmdBtn">
            <property name="text">
-            <string>添加命令</string>
+            <string>输入命令</string>
+           </property>
+           <property name="toolTip">
+            <string>输入任意命令行指令（如：notepad.exe、calc.exe、cmd /k \"echo Hello\"）</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="selectExeBtn">
+        <property name="text">
+            <string>选择可执行文件</string>
+        </property>
+           <property name="toolTip">
+            <string>选择可执行文件（.exe、.bat、.sh等）</string>
            </property>
           </widget>
          </item>
          <item>
           <widget class="QPushButton" name="delCmdBtn">
-           <property name="text">
+        <property name="text">
             <string>删除命令</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
+        </property>
        </widget>
       </item>
      </layout>
     </widget>
+   </item>
+  </layout>
+ </widget>
    </item>
    <item>
     <widget class="QWidget" name="horizontalWidget_3" native="true">

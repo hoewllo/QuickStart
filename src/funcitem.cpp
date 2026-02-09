@@ -1,5 +1,8 @@
 #include "funcitem.h"
+#include "icongenerator.h"
 #include <QJsonArray>
+#include <QFile>
+#include <QFileInfo>
 
 FuncItem::FuncItem(QObject *parent)
     : QObject(parent)
@@ -14,6 +17,20 @@ FuncItem::FuncItem(const QString &name, const QString &iconPath, const QStringLi
     , iconPath(iconPath)
     , cmds(cmds)
 {
+}
+
+QIcon FuncItem::getIcon() const
+{
+    // 如果图标路径不为空且文件存在，使用指定图标
+    if (!iconPath.isEmpty()) {
+        QFileInfo fileInfo(iconPath);
+        if (fileInfo.exists()) {
+            return QIcon(iconPath);
+        }
+    }
+    
+    // 否则使用默认图标生成器
+    return IconGenerator::generateDefaultIcon(name);
 }
 
 void FuncItem::addCmd(const QString &cmd)

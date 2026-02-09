@@ -14,6 +14,7 @@ class AppConfigDialog : public QDialog
 
 public:
     explicit AppConfigDialog(QWidget *parent = nullptr);
+    explicit AppConfigDialog(AppItem *existingItem, QWidget *parent = nullptr);
     ~AppConfigDialog();
     
     AppItem* getNewApp() const;
@@ -24,8 +25,11 @@ private slots:
     void onCancelClicked();
 
 private:
+    void initFromItem(AppItem *item);
+    
     Ui::AppConfigDialog *ui;
     AppItem *newApp;
+    AppItem *existingItem;
 };
 
 #endif // APPCONFIGDIALOG_H

@@ -6,6 +6,7 @@
 #include <QStringList>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QIcon>
 
 class FuncItem : public QObject
 {
@@ -20,6 +21,9 @@ public:
     
     QString getIconPath() const { return iconPath; }
     void setIconPath(const QString &newIconPath) { iconPath = newIconPath; }
+    
+    // 获取图标，如果iconPath为空则使用默认图标
+    QIcon getIcon() const;
     
     QStringList getCmds() const { return cmds; }
     void setCmds(const QStringList &newCmds) { cmds = newCmds; }

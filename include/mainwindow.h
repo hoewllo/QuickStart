@@ -25,16 +25,26 @@ private slots:
     void onIconListItemClicked(QListWidgetItem *item);
     void onAddAppClicked();
     void onAddFuncClicked();
+    void showContextMenu(const QPoint &pos);
+    void onEditItem();
+    void onDeleteItem();
 
 private:
     void refreshIconList();
     void saveConfig();
     void loadConfig();
+    void setupContextMenu();
 
     Ui::MainWindow *ui;
     AppItem *currentItem;
     AppItem *rootItem;
     const QString CONFIG_FILE_PATH = "./config.json";
+
+    // 右键菜单相关
+    QMenu *contextMenu;
+    QAction *editAction;
+    QAction *deleteAction;
+    QListWidgetItem *contextMenuItem;
 };
 #endif // MAINWINDOW_H
 

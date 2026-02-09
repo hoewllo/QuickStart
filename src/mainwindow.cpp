@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "../ui/ui_mainwindow.h"
+#include "icongenerator.h"
 
 #include <QMessageBox>
 #include <QProcess>
@@ -8,12 +9,18 @@
 #include <QJsonObject>
 #include <QDir>
 #include <QPushButton>
+#include <QMenu>
+#include <QAction>
 
 MainWindow::MainWindow(AppItem *currentItem, QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , currentItem(currentItem)
     , rootItem(nullptr)
+    , contextMenu(nullptr)
+    , editAction(nullptr)
+    , deleteAction(nullptr)
+    , contextMenuItem(nullptr)
 {
     ui->setupUi(this);
     
@@ -31,6 +38,9 @@ MainWindow::MainWindow(AppItem *currentItem, QWidget *parent)
     // 连接信号槽
     connect(ui->iconListWidget, &QListWidget::itemClicked, this, &MainWindow::onIconListItemClicked);
     
+    // 设置右键菜单
+    setupContextMenu();
+    
     // 刷新图标列表
     refreshIconList();
 }
@@ -38,6 +48,136 @@ MainWindow::MainWindow(AppItem *currentItem, QWidget *parent)
 MainWindow::~MainWindow()
 {
     delete ui;
+    if (contextMenu) {
+        delete contextMenu;
+    }
+}
+
+void MainWindow::setupContextMenu()
+{
+    // 创建右键菜单
+    contextMenu = new QMenu(this);
+    
+    // 创建菜单项
+    editAction = new QAction(tr("编辑"), this);
+    deleteAction = new QAction(tr("删除"), this);
+    
+    // 连接菜单项信号
+    connect(editAction, &QAction::triggered, this, &MainWindow::onEditItem);
+    connect(deleteAction, &QAction::triggered, this, &MainWindow::onDeleteItem);
+    
+    // 添加到菜单
+    contextMenu->addAction(editAction);
+    contextMenu->addAction(deleteAction);
+    
+    // 设置列表控件的上下文菜单策略
+    ui->iconListWidget->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(ui->iconListWidget, &QWidget::customContextMenuRequested,
+            this, &MainWindow::showContextMenu);
+}
+
+void MainWindow::showContextMenu(const QPoint &pos)
+{
+    // 获取点击位置的项
+    contextMenuItem = ui->iconListWidget->itemAt(pos);
+    
+    if (contextMenuItem) {
+        // 检查是否是"+添加"项
+        void *data = contextMenuItem->data(Qt::UserRole).value<void*>();
+        if (!data) {
+            // "+添加"项不显示右键菜单
+            return;
+        }
+        
+        // 显示右键菜单
+        contextMenu->exec(ui->iconListWidget->mapToGlobal(pos));
+    }
+}
+
+void MainWindow::onEditItem()
+{
+    if (!contextMenuItem || !currentItem) return;
+    
+    void *data = contextMenuItem->data(Qt::UserRole).value<void*>();
+    if (!data) return;
+    
+    // 检查是AppItem还是FuncItem
+    AppItem *appItem = reinterpret_cast<AppItem*>(data);
+    FuncItem *funcItem = reinterpret_cast<FuncItem*>(data);
+    
+    // 尝试编辑AppItem
+    if (appItem && currentItem->getSubApps().contains(appItem)) {
+        AppConfigDialog dialog(appItem, this);  // 使用带编辑功能的构造函数
+        if (dialog.exec() == QDialog::Accepted) {
+            AppItem *newApp = dialog.getNewApp();
+            if (newApp) {
+                // 替换原有的项
+                int index = currentItem->getSubApps().indexOf(appItem);
+                if (index != -1) {
+                    // 删除旧的
+                    currentItem->removeSubApp(appItem);
+                    // 添加新的
+                    currentItem->addSubApp(newApp);
+                    refreshIconList();
+                    saveConfig();
+                }
+            }
+        }
+    } 
+    // 尝试编辑FuncItem
+    else if (funcItem && currentItem->getFuncs().contains(funcItem)) {
+        FuncConfigDialog dialog(funcItem, this);  // 使用带编辑功能的构造函数
+        if (dialog.exec() == QDialog::Accepted) {
+            FuncItem *newFunc = dialog.getNewFunc();
+            if (newFunc) {
+                // 替换原有的项
+                int index = currentItem->getFuncs().indexOf(funcItem);
+                if (index != -1) {
+                    // 删除旧的
+                    currentItem->removeFunc(funcItem);
+                    // 添加新的
+                    currentItem->addFunc(newFunc);
+                    refreshIconList();
+                    saveConfig();
+                }
+            }
+        }
+    }
+}
+
+void MainWindow::onDeleteItem()
+{
+    if (!contextMenuItem || !currentItem) return;
+    
+    void *data = contextMenuItem->data(Qt::UserRole).value<void*>();
+    if (!data) return;
+    
+    QString itemName = contextMenuItem->text();
+    
+    // 确认对话框
+    QMessageBox::StandardButton reply;
+    reply = QMessageBox::question(this, tr("确认删除"),
+                                 tr("确定要删除 \"%1\" 吗？").arg(itemName),
+                                 QMessageBox::Yes | QMessageBox::No);
+    
+    if (reply == QMessageBox::Yes) {
+        // 检查是AppItem还是FuncItem
+        AppItem *appItem = reinterpret_cast<AppItem*>(data);
+        FuncItem *funcItem = reinterpret_cast<FuncItem*>(data);
+        
+        // 删除AppItem
+        if (appItem && currentItem->getSubApps().contains(appItem)) {
+            currentItem->removeSubApp(appItem);
+            refreshIconList();
+            saveConfig();
+        }
+        // 删除FuncItem
+        else if (funcItem && currentItem->getFuncs().contains(funcItem)) {
+            currentItem->removeFunc(funcItem);
+            refreshIconList();
+            saveConfig();
+        }
+    }
 }
 
 void MainWindow::loadConfig()
@@ -87,7 +227,7 @@ void MainWindow::refreshIconList()
     for (AppItem *app : currentItem->getSubApps()) {
         QListWidgetItem *item = new QListWidgetItem();
         item->setText(app->getName());
-        item->setIcon(QIcon(app->getIconPath()));
+        item->setIcon(app->getIcon());  // 使用getIcon方法
         item->setData(Qt::UserRole, QVariant::fromValue<void*>(static_cast<void*>(app)));
         ui->iconListWidget->addItem(item);
     }
@@ -96,7 +236,7 @@ void MainWindow::refreshIconList()
     for (FuncItem *func : currentItem->getFuncs()) {
         QListWidgetItem *item = new QListWidgetItem();
         item->setText(func->getName());
-        item->setIcon(QIcon(func->getIconPath()));
+        item->setIcon(func->getIcon());  // 使用getIcon方法
         item->setData(Qt::UserRole, QVariant::fromValue<void*>(static_cast<void*>(func)));
         ui->iconListWidget->addItem(item);
     }
@@ -104,6 +244,7 @@ void MainWindow::refreshIconList()
     // 添加+添加项
     QListWidgetItem *addItem = new QListWidgetItem();
     addItem->setText("+添加");
+    addItem->setIcon(IconGenerator::generateIcon("+", Qt::lightGray, Qt::white, 64));
     addItem->setData(Qt::UserRole, QVariant::fromValue<void*>(nullptr));
     ui->iconListWidget->addItem(addItem);
 }
