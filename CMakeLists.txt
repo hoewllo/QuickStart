@@ -1,18 +1,51 @@
+#=============================================================================
+# CMake 配置文件 - 标准化版本
+#=============================================================================
+
+# 设置 CMake 最低版本要求
 cmake_minimum_required(VERSION 3.16)
 
-project(QtAppLauncher VERSION 1.0 LANGUAGES CXX)
+# 设置项目变量（如果未在命令行中定义）
+if(NOT DEFINED PROJECT_NAME)
+    set(PROJECT_NAME "QtAppLauncher" CACHE STRING "Project name")
+endif()
 
+if(NOT DEFINED PROJECT_VERSION)
+    set(PROJECT_VERSION "1.0.0" CACHE STRING "Project version")
+endif()
+
+# 项目基本信息
+project(
+    ${PROJECT_NAME} 
+    VERSION ${PROJECT_VERSION}
+    DESCRIPTION "Qt Application Launcher"
+    LANGUAGES CXX
+)
+
+# 设置 CMake 策略
+cmake_policy(SET CMP0071 NEW)  # 使用绝对路径在 target_sources() 中
+cmake_policy(SET CMP0077 NEW)  # 选项() 尊重正常变量
+
+# 设置默认构建类型
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type (Debug, Release, RelWithDebInfo, MinSizeRel)" FORCE)
+endif()
+
+# 设置 C++ 标准
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# 启用 Qt 自动处理
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
+# 查找 Qt
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
 
-# 设置UI文件目录
+# 设置 UI 文件搜索路径
 set(CMAKE_AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/ui")
 
 # 设置构建输出目录
@@ -20,78 +53,298 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
-# 源文件
-set(SOURCES
-    src/main.cpp
-    src/mainwindow.cpp
-    src/appitem.cpp
-    src/funcitem.cpp
-    src/appconfigdialog.cpp
-    src/funcconfigdialog.cpp
-    src/icongenerator.cpp  # 添加图标生成器
+#=============================================================================
+# 配置选项
+#=============================================================================
+
+# 安装路径配置
+set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/install" CACHE PATH "Installation prefix")
+set(CMAKE_INSTALL_BINDIR "bin" CACHE STRING "Binary installation directory")
+set(CMAKE_INSTALL_LIBDIR "lib" CACHE STRING "Library installation directory")
+set(CMAKE_INSTALL_INCLUDEDIR "include" CACHE STRING "Include files installation directory")
+set(CMAKE_INSTALL_DATADIR "share" CACHE STRING "Data files installation directory")
+
+# 项目选项
+option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
+option(BUILD_TESTS "Build tests" OFF)
+option(BUILD_EXAMPLES "Build examples" OFF)
+option(ENABLE_DEBUG "Enable debug features" OFF)
+option(INSTALL_DEVELOPMENT "Install development files" ON)
+
+# 平台特定选项
+if(WIN32)
+    option(USE_STATIC_RUNTIME "Use static runtime libraries" ON)
+    option(GENERATE_PDB "Generate PDB debug files" ON)
+endif()
+
+#=============================================================================
+# 源文件自动发现
+#=============================================================================
+
+# 自动发现源文件
+file(GLOB_RECURSE SOURCES 
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cc"
 )
 
-# 头文件
-set(HEADERS
-    include/mainwindow.h
-    include/appitem.h
-    include/funcitem.h
-    include/appconfigdialog.h
-    include/funcconfigdialog.h
-    include/icongenerator.h  # 添加图标生成器头文件
+# 自动发现头文件
+file(GLOB_RECURSE HEADERS 
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp"
 )
 
-# UI文件
-set(UI_FILES
-    ui/mainwindow.ui
-    ui/appconfigdialog.ui
-    ui/funcconfigdialog.ui
+# 自动发现 UI 文件
+file(GLOB_RECURSE UI_FILES 
+    "${CMAKE_CURRENT_SOURCE_DIR}/ui/*.ui"
 )
 
-# 资源文件
-set(RESOURCE_FILES
-    resources/app_icon.rc
-    resources.qrc
+# 自动发现资源文件
+file(GLOB_RECURSE RESOURCE_FILES 
+    "${CMAKE_CURRENT_SOURCE_DIR}/resources/*.rc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/resources/*.qrc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.qrc"
 )
 
+# 过滤掉不需要的文件（如果有）
+list(FILTER SOURCES EXCLUDE REGEX ".*_test\\.cpp$")
+list(FILTER SOURCES EXCLUDE REGEX ".*_mock\\.cpp$")
+list(FILTER HEADERS EXCLUDE REGEX ".*_test\\.h$")
+list(FILTER HEADERS EXCLUDE REGEX ".*_mock\\.h$")
+
+# 计算文件数量
+list(LENGTH SOURCES SOURCES_COUNT)
+list(LENGTH HEADERS HEADERS_COUNT)
+list(LENGTH UI_FILES UI_FILES_COUNT)
+list(LENGTH RESOURCE_FILES RESOURCE_FILES_COUNT)
+
+# 打印文件统计信息
+message(STATUS "Found ${SOURCES_COUNT} source files")
+message(STATUS "Found ${HEADERS_COUNT} header files")
+message(STATUS "Found ${UI_FILES_COUNT} UI files")
+message(STATUS "Found ${RESOURCE_FILES_COUNT} resource files")
+
+#=============================================================================
+# 目标创建
+#=============================================================================
+
+# 创建可执行文件目标
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
-        qt_add_executable(QtAppLauncher
+    qt_add_executable(${PROJECT_NAME}
         MANUAL_FINALIZATION
         ${SOURCES}
         ${HEADERS}
         ${UI_FILES}
         ${RESOURCE_FILES}
     )
-# Define target properties for Android with Qt 6 as:
-#    set_property(TARGET QtAppLauncher APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
-#                 ${CMAKE_CURRENT_SOURCE_DIR}/android)
-# For more information, see https://doc.qt.io/qt-6/qt-add-executable.html#target-creation
+    # Android 配置（如果需要）
+    # set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
+    #              ${CMAKE_CURRENT_SOURCE_DIR}/android)
 else()
-        add_executable(QtAppLauncher
-            ${SOURCES}
-            ${HEADERS}
-            ${UI_FILES}
-            ${RESOURCE_FILES}
-)
+    add_executable(${PROJECT_NAME}
+        ${SOURCES}
+        ${HEADERS}
+        ${UI_FILES}
+        ${RESOURCE_FILES}
+    )
 endif()
 
-target_include_directories(QtAppLauncher PRIVATE include)
-target_include_directories(QtAppLauncher PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-target_link_libraries(QtAppLauncher PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
+#=============================================================================
+# 目标属性配置
+#=============================================================================
 
-# 设置可执行文件属性
-set_target_properties(QtAppLauncher PROPERTIES
-    WIN32_EXECUTABLE TRUE
-    MACOSX_BUNDLE FALSE
-    RC_ICONS "${CMAKE_CURRENT_SOURCE_DIR}/resources/app_icon.ico"
+# 包含目录
+target_include_directories(${PROJECT_NAME} 
+    PRIVATE 
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-# 安装目标
-install(TARGETS QtAppLauncher
+# 链接库
+target_link_libraries(${PROJECT_NAME} 
+    PRIVATE 
+        Qt${QT_VERSION_MAJOR}::Widgets
+)
+
+# 编译定义
+if(ENABLE_DEBUG)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE ENABLE_DEBUG=1)
+endif()
+
+# 平台特定设置
+if(WIN32)
+    # Windows 特定设置
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        WIN32_EXECUTABLE TRUE
+        SUFFIX ".exe"
+    )
+    
+    # 设置图标
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/resources/app_icon.ico")
+        set_target_properties(${PROJECT_NAME} PROPERTIES
+            RC_ICONS "${CMAKE_CURRENT_SOURCE_DIR}/resources/app_icon.ico"
+        )
+    endif()
+    
+    # 运行时库设置
+    if(USE_STATIC_RUNTIME)
+        if(MSVC)
+            target_compile_options(${PROJECT_NAME} PRIVATE /MT$<$<CONFIG:Debug>:d>)
+        endif()
+    endif()
+    
+    # 调试信息生成
+    if(GENERATE_PDB AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+        if(MSVC)
+            # MSVC 编译器选项
+            target_compile_options(${PROJECT_NAME} PRIVATE /Zi)
+            target_link_options(${PROJECT_NAME} PRIVATE /DEBUG)
+        else()
+            # GCC/MinGW 编译器选项
+            target_compile_options(${PROJECT_NAME} PRIVATE -g)
+            target_link_options(${PROJECT_NAME} PRIVATE -g)
+        endif()
+    endif()
+    
+elseif(APPLE)
+    # macOS 特定设置
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.example.${PROJECT_NAME}"
+        MACOSX_BUNDLE_BUNDLE_NAME "${PROJECT_NAME}"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}"
+    )
+else()
+    # Linux/Unix 特定设置
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        MACOSX_BUNDLE FALSE
+    )
+endif()
+
+# 通用目标属性
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    VERSION ${PROJECT_VERSION}
+    SOVERSION ${PROJECT_VERSION_MAJOR}
+    OUTPUT_NAME ${PROJECT_NAME}
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+)
+
+#=============================================================================
+# 安装配置
+#=============================================================================
+
+# 安装可执行文件
+install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
+
+# 安装头文件（如果启用了开发文件安装）
+if(INSTALL_DEVELOPMENT)
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}
+        FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+    )
+endif()
+
+# 安装资源文件
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/resources")
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/resources/
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/resources
+        PATTERN "*.qrc" EXCLUDE
+    )
+endif()
+
+# 安装文档
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/README.md
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}
+    )
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}
+    )
+endif()
+
+#=============================================================================
+# 测试配置（如果启用）
+#=============================================================================
+
+if(BUILD_TESTS)
+    enable_testing()
+    
+    # 自动发现测试文件
+    file(GLOB_RECURSE TEST_SOURCES 
+        "${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/*_test.cpp"
+    )
+    
+    if(TEST_SOURCES)
+        add_executable(${PROJECT_NAME}_tests ${TEST_SOURCES})
+        target_link_libraries(${PROJECT_NAME}_tests PRIVATE ${PROJECT_NAME})
+        add_test(NAME ${PROJECT_NAME}_tests COMMAND ${PROJECT_NAME}_tests)
+    endif()
+endif()
+
+#=============================================================================
+# Qt 6 最终化
+#=============================================================================
 
 if(QT_VERSION_MAJOR EQUAL 6)
-    qt_finalize_executable(QtAppLauncher)
+    qt_finalize_executable(${PROJECT_NAME})
 endif()
+
+#=============================================================================
+# 生成配置文件
+#=============================================================================
+
+# 创建配置头文件（如果不存在模板，则创建简单版本）
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/config.h.in")
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/config.h.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/config.h"
+        @ONLY
+    )
+else()
+    # 创建简单的版本头文件
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/config.h"
+        "// Auto-generated configuration header\n"
+        "#ifndef ${PROJECT_NAME}_CONFIG_H\n"
+        "#define ${PROJECT_NAME}_CONFIG_H\n\n"
+        "#define ${PROJECT_NAME}_VERSION_MAJOR ${PROJECT_VERSION_MAJOR}\n"
+        "#define ${PROJECT_NAME}_VERSION_MINOR ${PROJECT_VERSION_MINOR}\n"
+        "#define ${PROJECT_NAME}_VERSION_PATCH ${PROJECT_VERSION_PATCH}\n"
+        "#define ${PROJECT_NAME}_VERSION \"${PROJECT_VERSION}\"\n\n"
+        "#endif // ${PROJECT_NAME}_CONFIG_H\n"
+    )
+endif()
+
+# 将生成的配置头文件添加到包含路径
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+
+#=============================================================================
+# 总结信息
+#=============================================================================
+
+message(STATUS "==========================================")
+message(STATUS "Project: ${PROJECT_NAME}")
+message(STATUS "Version: ${PROJECT_VERSION}")
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "Qt version: ${QT_VERSION_MAJOR}")
+message(STATUS "Install prefix: ${CMAKE_INSTALL_PREFIX}")
+message(STATUS "Source files: ${SOURCES_COUNT}")
+message(STATUS "Header files: ${HEADERS_COUNT}")
+message(STATUS "UI files: ${UI_FILES_COUNT}")
+message(STATUS "Resource files: ${RESOURCE_FILES_COUNT}")
+message(STATUS "==========================================")
 
