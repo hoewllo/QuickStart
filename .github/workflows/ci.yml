@@ -1,0 +1,749 @@
+name: Qt Application CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    # 允许手动触发
+
+env:
+  BUILD_TYPE: Release
+  QT_VERSION: "6.5.0" # 指定Qt版本
+  PROJECT_NAME: "QtAppLauncher" # 项目名称，与CMakeLists.txt一致
+
+jobs:
+  # Windows MSVC构建（使用Visual Studio）
+  build-windows-msvc:
+    name: Build Windows (MSVC + Qt)
+    runs-on: windows-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Qt for MSVC
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_msvc2019_64
+          install-deps: true
+
+      - name: Setup MSVC
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Configure CMake with Qt
+        run: |
+          cmake -B build/msvc `
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
+            -DQT_VERSION_MAJOR=6 `
+            -DPROJECT_NAME="${{ env.PROJECT_NAME }}"
+
+      - name: Build
+        run: |
+          cmake --build build/msvc --config ${{ env.BUILD_TYPE }} --parallel
+
+      - name: Collect Qt runtime libraries
+        run: |
+          # 创建运行时目录
+          mkdir -p build/msvc/runtime
+
+          # 复制可执行文件
+          if (Test-Path "build/msvc/bin/*.exe") {
+            Copy-Item "build/msvc/bin/*.exe" "build/msvc/runtime/"
+          }
+
+          # 查找Qt安装路径
+          $qtPaths = @(
+            "C:\Qt\6.5.0\msvc2019_64",
+            "C:\Qt\6.5.0\msvc2019_64",
+            "C:\Qt\6.5.0\msvc2019_64\bin"
+          )
+
+          $qtBinPath = $null
+          foreach ($path in $qtPaths) {
+            if (Test-Path $path) {
+              $qtBinPath = $path
+              if (-not $qtBinPath.EndsWith("\bin")) {
+                $qtBinPath = Join-Path $qtBinPath "bin"
+              }
+              Write-Host "Found Qt at: $qtBinPath"
+              break
+            }
+          }
+
+          if ($qtBinPath) {
+            $qtDlls = @(
+              "Qt6Core.dll",
+              "Qt6Gui.dll", 
+              "Qt6Widgets.dll"
+            )
+            
+            foreach ($dll in $qtDlls) {
+              $dllPath = Join-Path $qtBinPath $dll
+              if (Test-Path $dllPath) {
+                Copy-Item $dllPath -Destination "build/msvc/runtime/"
+                Write-Host "Copied Qt DLL: $dll"
+              }
+            }
+            
+            # 复制平台插件
+            $pluginsDir = "build/msvc/runtime/platforms"
+            mkdir -p $pluginsDir
+            $qtPluginPath = $qtBinPath.Replace("\bin", "\plugins\platforms\qwindows.dll")
+            if (Test-Path $qtPluginPath) {
+              Copy-Item $qtPluginPath -Destination $pluginsDir
+              Write-Host "Copied platform plugin"
+            }
+          } else {
+            Write-Host "Qt installation not found, skipping DLL collection"
+          }
+
+      - name: Create Windows installer package
+        run: |
+          cd build/msvc
+          # 使用CPack创建安装包
+          cpack -G WIX -C ${{ env.BUILD_TYPE }} || echo "WIX package creation failed"
+          cpack -G NSIS -C ${{ env.BUILD_TYPE }} || echo "NSIS package creation failed"
+
+          # 创建简单的ZIP包
+          if (Test-Path "runtime/*.exe") {
+            Compress-Archive -Path "runtime/*" -DestinationPath "${{ env.PROJECT_NAME }}-windows-msvc.zip" -Force
+          }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-msvc-packages
+          path: |
+            build/msvc/*.zip
+            build/msvc/*.msi
+            build/msvc/*.exe
+            build/msvc/bin/*.exe
+            build/msvc/runtime/*
+
+      - name: Create package with CPack
+        run: |+
+          cd build/msvc
+          cpack -G ZIP -C Release
+          cpack -G NSIS -C Release || echo "NSIS package creation failed, continuing with ZIP only"
+
+          # 检查是否生成了ZIP文件
+          $zipFile = Get-ChildItem "*.zip" | Select-Object -First 1
+          if ($zipFile) {
+            Write-Host "Generated ZIP file: $($zipFile.FullName)"
+            
+            # 解压ZIP文件
+            $tempDir = New-Item -ItemType Directory -Path "temp_extract" -Force
+            Expand-Archive -Path $zipFile.FullName -DestinationPath $tempDir.FullName -Force
+            
+            # 查看解压后的目录结构
+            Write-Host "Extracted directory structure:"
+            Get-ChildItem -Path $tempDir.FullName -Recurse | ForEach-Object { Write-Host "  $($_.FullName)" }
+            
+            # 查找可执行文件所在的目录
+            $exeDir = $null
+            $exeFiles = Get-ChildItem -Path $tempDir.FullName -Recurse -Filter "*.exe"
+            if ($exeFiles) {
+              $exeDir = $exeFiles[0].Directory.FullName
+              Write-Host "Found executable in: $exeDir"
+              
+              # 复制运行时DLL到可执行文件所在目录
+              if (Test-Path "runtime/*.dll") {
+                Copy-Item "runtime/*.dll" -Destination $exeDir -Force
+                Write-Host "Copied runtime DLLs to: $exeDir"
+              }
+            } else {
+              Write-Host "No executable found in extracted archive"
+            }
+            
+            # 重新创建ZIP文件
+            Remove-Item $zipFile.FullName -Force
+            Compress-Archive -Path "$($tempDir.FullName)/*" -DestinationPath $zipFile.FullName -CompressionLevel Optimal
+            
+  # Windows MinGW构建（使用MinGW GCC）
+  build-windows-mingw:
+    name: Build Windows (MinGW + Qt)
+    runs-on: windows-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Qt for MinGW
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_mingw
+          install-deps: true
+
+      - name: Install MinGW
+        run: |
+          # 尝试查找Qt自带的MinGW
+          $mingwPaths = @(
+            "C:\Qt\Tools\mingw1120_64\bin",
+            "C:\mingw64\bin",
+            "C:\Program Files\mingw-w64\bin"
+          )
+
+          $mingwPath = $null
+          foreach ($path in $mingwPaths) {
+            if (Test-Path $path) {
+              $mingwPath = $path
+              $env:Path = "$mingwPath;" + $env:Path
+              [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Process)
+              Write-Host "Added MinGW to PATH: $mingwPath"
+              break
+            }
+          }
+
+          if (-not $mingwPath) {
+            # 安装MinGW
+            choco install mingw -y
+          }
+
+      - name: Configure CMake with Qt (MinGW)
+        run: |
+          cmake -B build/mingw `
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
+            -DQT_VERSION_MAJOR=6 `
+            -DPROJECT_NAME="${{ env.PROJECT_NAME }}" `
+            -G "MinGW Makefiles"
+
+      - name: Build with MinGW
+        run: |
+          cmake --build build/mingw --config ${{ env.BUILD_TYPE }} --parallel
+
+      - name: Collect Qt and MinGW runtime libraries
+        run: |
+          # 创建运行时目录
+          mkdir -p build/mingw/runtime
+
+          # 复制可执行文件
+          if (Test-Path "build/mingw/bin/*.exe") {
+            Copy-Item "build/mingw/bin/*.exe" "build/mingw/runtime/"
+          }
+
+          # 查找Qt安装路径
+          $qtPaths = @(
+            "C:\Qt\6.5.0\mingw_64",
+            "C:\Qt\6.5.0\mingw_64\bin"
+          )
+
+          $qtBinPath = $null
+          foreach ($path in $qtPaths) {
+            if (Test-Path $path) {
+              $qtBinPath = $path
+              if (-not $qtBinPath.EndsWith("\bin")) {
+                $qtBinPath = Join-Path $qtBinPath "bin"
+              }
+              Write-Host "Found Qt at: $qtBinPath"
+              break
+            }
+          }
+
+          if ($qtBinPath) {
+            $qtDlls = @(
+              "Qt6Core.dll",
+              "Qt6Gui.dll", 
+              "Qt6Widgets.dll"
+            )
+            
+            foreach ($dll in $qtDlls) {
+              $dllPath = Join-Path $qtBinPath $dll
+              if (Test-Path $dllPath) {
+                Copy-Item $dllPath -Destination "build/mingw/runtime/"
+                Write-Host "Copied Qt DLL: $dll"
+              }
+            }
+            
+            # 复制平台插件
+            $pluginsDir = "build/mingw/runtime/platforms"
+            mkdir -p $pluginsDir
+            $qtPluginPath = $qtBinPath.Replace("\bin", "\plugins\platforms\qwindows.dll")
+            if (Test-Path $qtPluginPath) {
+              Copy-Item $qtPluginPath -Destination $pluginsDir
+              Write-Host "Copied platform plugin"
+            }
+          }
+
+          # 复制MinGW运行时DLL
+          $mingwPaths = @(
+            "C:\Qt\Tools\mingw1120_64\bin",
+            "C:\mingw64\bin",
+            "C:\Program Files\mingw-w64\bin"
+          )
+
+          foreach ($mingwPath in $mingwPaths) {
+            if (Test-Path $mingwPath) {
+              $mingwDlls = @(
+                "libstdc++-6.dll",
+                "libgcc_s_seh-1.dll",
+                "libwinpthread-1.dll"
+              )
+              
+              foreach ($dll in $mingwDlls) {
+                $dllPath = Join-Path $mingwPath $dll
+                if (Test-Path $dllPath) {
+                  Copy-Item $dllPath -Destination "build/mingw/runtime/"
+                  Write-Host "Copied MinGW DLL: $dll from $mingwPath"
+                }
+              }
+              break
+            }
+          }
+
+      - name: Create MinGW package
+        run: |
+          cd build/mingw
+          if (Test-Path "runtime/*.exe") {
+            Compress-Archive -Path "runtime/*" -DestinationPath "${{ env.PROJECT_NAME }}-windows-mingw.zip" -Force
+          }
+
+      - name: Upload MinGW artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-mingw-packages
+          path: |
+            build/mingw/*.zip
+            build/mingw/bin/*.exe
+            build/mingw/runtime/*
+
+  # Linux构建
+  build-linux:
+    name: Build Linux (GCC + Qt)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Qt and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            qt6-base-dev \
+            qt6-tools-dev \
+            qt6-tools-dev-tools \
+            libgl1-mesa-dev \
+            libxkbcommon-x11-0
+
+      - name: Configure CMake for Linux
+        run: |
+          cmake -B build/linux \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DQT_VERSION_MAJOR=6 \
+            -DPROJECT_NAME="${{ env.PROJECT_NAME }}" \
+            -G Ninja
+
+      - name: Build for Linux
+        run: |
+          cmake --build build/linux --config ${{ env.BUILD_TYPE }} --parallel
+
+      - name: Create AppImage bundle (if available)
+        run: |
+          # 检查linuxdeployqt是否可用
+          if command -v linuxdeployqt &> /dev/null; then
+            cd build/linux
+            # 创建AppDir
+            mkdir -p AppDir/usr/bin
+            mkdir -p AppDir/usr/lib
+            mkdir -p AppDir/usr/share/applications
+            mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+            
+            # 复制可执行文件
+            if [ -f "bin/${{ env.PROJECT_NAME }}" ]; then
+              cp "bin/${{ env.PROJECT_NAME }}" AppDir/usr/bin/
+              
+              # 创建.desktop文件
+              cat > AppDir/usr/share/applications/${{ env.PROJECT_NAME }}.desktop << EOF
+              [Desktop Entry]
+              Type=Application
+              Name=${{ env.PROJECT_NAME }}
+              Comment=Qt Application Launcher
+              Exec=${{ env.PROJECT_NAME }}
+              Icon=${{ env.PROJECT_NAME }}
+              Categories=Utility;
+              Terminal=false
+              EOF
+              
+              # 使用linuxdeployqt创建AppImage
+              linuxdeployqt AppDir/usr/share/applications/${{ env.PROJECT_NAME }}.desktop -appimage || echo "linuxdeployqt failed, continuing without AppImage"
+            fi
+          else
+            echo "linuxdeployqt not available, skipping AppImage creation"
+          fi
+
+      - name: Create Linux package
+        run: |
+          cd build/linux
+          # 创建简单的tar包
+          if [ -f "bin/${{ env.PROJECT_NAME }}" ]; then
+            tar -czf "${{ env.PROJECT_NAME }}-linux.tar.gz" bin/${{ env.PROJECT_NAME }}
+          fi
+
+          # 尝试创建DEB包
+          cpack -G DEB -C ${{ env.BUILD_TYPE }} || echo "DEB package creation failed"
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            build/linux/*.tar.gz
+            build/linux/*.deb
+            build/linux/*.AppImage
+            build/linux/bin/*
+
+  # macOS构建
+  build-macos:
+    name: Build macOS (Clang + Qt)
+    runs-on: macos-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Qt for macOS
+        run: |
+          brew install qt@6 cmake ninja
+
+      - name: Configure CMake for macOS
+        run: |
+          cmake -B build/macos \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix qt@6)" \
+            -DQT_VERSION_MAJOR=6 \
+            -DPROJECT_NAME="${{ env.PROJECT_NAME }}" \
+            -G Ninja
+
+      - name: Build for macOS
+        run: |
+          cmake --build build/macos --config ${{ env.BUILD_TYPE }} --parallel
+
+      - name: Create macOS app bundle
+        run: |
+          cd build/macos
+          # 如果构建了.app bundle，进行打包
+          if [ -d "bin/${{ env.PROJECT_NAME }}.app" ]; then
+            # 创建DMG包
+            hdiutil create -volname "${{ env.PROJECT_NAME }}" \
+              -srcfolder "bin/${{ env.PROJECT_NAME }}.app" \
+              -ov -format UDZO \
+              "${{ env.PROJECT_NAME }}-macos.dmg"
+          fi
+
+          # 创建ZIP包
+          if [ -f "bin/${{ env.PROJECT_NAME }}" ] || [ -d "bin/${{ env.PROJECT_NAME }}.app" ]; then
+            zip -r "${{ env.PROJECT_NAME }}-macos.zip" bin/
+          fi
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-packages
+          path: |
+            build/macos/*.zip
+            build/macos/*.dmg
+            build/macos/bin/*
+
+  # 代码质量检查
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Qt and dependencies for code analysis
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            qt6-base-dev \
+            clang-tidy \
+            cppcheck \
+            valgrind \
+            python3-pip
+
+          # 安装clang-format
+          pip3 install clang-format
+
+      - name: Configure CMake for code analysis
+        run: |
+          cmake -B build/analysis \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DQT_VERSION_MAJOR=6 \
+            -DPROJECT_NAME="${{ env.PROJECT_NAME }}" \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Run clang-format check
+        run: |
+          # 检查C++文件格式
+          find src include -name "*.cpp" -o -name "*.h" -o -name "*.hpp" | \
+            xargs clang-format --dry-run --Werror || echo "clang-format check completed"
+
+      - name: Run clang-tidy
+        run: |
+          # 使用compile_commands.json运行clang-tidy
+          if [ -f "build/analysis/compile_commands.json" ]; then
+            find src -name "*.cpp" | \
+              xargs -I {} clang-tidy {} \
+                -checks='-*,modernize-*,readability-*,performance-*,portability-*' \
+                --warnings-as-errors='*' \
+                --header-filter='include/.*' \
+                -p build/analysis 2>&1 | tee clang-tidy-report.txt || true
+          else
+            echo "compile_commands.json not found, skipping clang-tidy"
+          fi
+
+      - name: Run cppcheck
+        run: |
+          cppcheck \
+            --enable=all \
+            --suppress=missingIncludeSystem \
+            --std=c++17 \
+            --error-exitcode=0 \
+            --inline-suppr \
+            --xml \
+            src/ include/ 2> cppcheck-report.xml || true
+
+          # 生成可读的报告
+          cppcheck-htmlreport --file=cppcheck-report.xml --report-dir=cppcheck-report --source-dir=.
+
+      - name: Upload code quality reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-quality-reports
+          path: |
+            clang-tidy-report.txt
+            cppcheck-report.xml
+            cppcheck-report/
+
+  # 创建发布
+  create-release:
+    name: Create Release
+    needs:
+      [
+        build-windows-msvc,
+        build-windows-mingw,
+        build-linux,
+        build-macos,
+        code-quality,
+      ]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' ||
+      github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+
+      - name: Create release packages
+        run: |
+          mkdir -p release
+
+          # 为每个平台创建发布包
+          echo "创建跨平台发布包..."
+
+          # Windows MSVC包
+          if [ -d "windows-msvc-packages" ]; then
+            mkdir -p release/windows-msvc
+            find windows-msvc-packages -type f \( -name "*.zip" -o -name "*.msi" -o -name "*.exe" \) -exec cp {} release/windows-msvc/ \;
+            cd release/windows-msvc && tar -czf ../${{ env.PROJECT_NAME }}-windows-msvc.tar.gz . && cd ../..
+            rm -rf release/windows-msvc
+          fi
+
+          # Windows MinGW包
+          if [ -d "windows-mingw-packages" ]; then
+            mkdir -p release/windows-mingw
+            find windows-mingw-packages -type f \( -name "*.zip" -o -name "*.exe" \) -exec cp {} release/windows-mingw/ \;
+            cd release/windows-mingw && tar -czf ../${{ env.PROJECT_NAME }}-windows-mingw.tar.gz . && cd ../..
+            rm -rf release/windows-mingw
+          fi
+
+          # Linux包
+          if [ -d "linux-packages" ]; then
+            mkdir -p release/linux
+            find linux-packages -type f \( -name "*.tar.gz" -o -name "*.deb" -o -name "*.AppImage" \) -exec cp {} release/linux/ \;
+            cd release/linux && tar -czf ../${{ env.PROJECT_NAME }}-linux.tar.gz . && cd ../..
+            rm -rf release/linux
+          fi
+
+          # macOS包
+          if [ -d "macos-packages" ]; then
+            mkdir -p release/macos
+            find macos-packages -type f \( -name "*.zip" -o -name "*.dmg" \) -exec cp {} release/macos/ \;
+            cd release/macos && tar -czf ../${{ env.PROJECT_NAME }}-macos.tar.gz . && cd ../..
+            rm -rf release/macos
+          fi
+
+          # 创建README文件
+          cat > release/README.md << 'EOF'
+          # ${{ env.PROJECT_NAME }} - Cross-Platform Release
+
+          This release contains pre-built packages for Windows, Linux, and macOS.
+
+          ## System Requirements
+
+          ### Windows
+          - Windows 10 or later (64-bit)
+          - For MSVC packages: Visual C++ Redistributable may be required
+          - For MinGW packages: No additional runtime required
+
+          ### Linux
+          - Ubuntu 20.04 or compatible distribution
+          - Qt 6 runtime libraries
+          - OpenGL support
+
+          ### macOS
+          - macOS 11.0 (Big Sur) or later
+          - Qt 6 framework
+
+          ## Installation
+
+          ### Windows
+          1. Download the appropriate package (MSVC or MinGW)
+          2. Extract the ZIP file
+          3. Run `${{ env.PROJECT_NAME }}.exe`
+
+          ### Linux
+          1. Download the package for your distribution
+          2. For DEB package: `sudo dpkg -i ${{ env.PROJECT_NAME }}.deb`
+          3. For AppImage: `chmod +x ${{ env.PROJECT_NAME }}.AppImage && ./${{ env.PROJECT_NAME }}.AppImage`
+
+          ### macOS
+          1. Download the DMG or ZIP file
+          2. Open the DMG and drag the app to Applications folder
+          3. Or extract the ZIP and run the app
+
+          ## Building from Source
+
+          ### Prerequisites
+          - CMake 3.16+
+          - Qt 6.5+
+          - C++17 compiler
+
+          ### Build Commands
+          ```bash
+          git clone <repository-url>
+          cd ${{ env.PROJECT_NAME }}
+          mkdir build && cd build
+          cmake .. -DCMAKE_PREFIX_PATH=<path-to-qt>
+          cmake --build . --config Release
+          ```
+
+          ## License
+
+          See the LICENSE file in the source repository.
+          EOF
+
+      - name: Get version info
+        id: version_info
+        run: |
+          # 尝试从version.txt提取版本号
+          VERSION="1.0.0"
+          if [ -f "version.txt" ]; then
+            # 读取第一行作为版本号
+            VERSION=$(head -n 1 version.txt | tr -d '[:space:]')
+          elif [ -f "CMakeLists.txt" ]; then
+            # 备用方案：从CMakeLists.txt提取
+            VERSION_LINE=$(grep -i "project_version" CMakeLists.txt | head -1)
+            if [ -n "$VERSION_LINE" ]; then
+              VERSION=$(echo "$VERSION_LINE" | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
+            fi
+          fi
+
+          # 使用运行号作为构建号
+          BUILD_NUMBER="$GITHUB_RUN_NUMBER"
+          FULL_VERSION="${VERSION}.${BUILD_NUMBER}"
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+          echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
+          echo "tag_name=v${FULL_VERSION}" >> $GITHUB_OUTPUT
+          echo "release_name=${{ env.PROJECT_NAME }} v${FULL_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version_info.outputs.tag_name }}
+          name: ${{ steps.version_info.outputs.release_name }}
+          body: |
+            # ${{ env.PROJECT_NAME }} Release v${{ steps.version_info.outputs.full_version }}
+
+            **Version:** ${{ steps.version_info.outputs.version }}
+            **Build:** ${{ steps.version_info.outputs.build_number }}
+            **Commit:** ${{ github.sha }}
+            **Date:** $(date -u +"%Y-%m-%d")
+
+            ## Download Packages
+
+            | Platform | Package | Size |
+            |----------|---------|------|
+            | Windows (MSVC) | [${{ env.PROJECT_NAME }}-windows-msvc.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.version_info.outputs.tag_name }}/${{ env.PROJECT_NAME }}-windows-msvc.tar.gz) | - |
+            | Windows (MinGW) | [${{ env.PROJECT_NAME }}-windows-mingw.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.version_info.outputs.tag_name }}/${{ env.PROJECT_NAME }}-windows-mingw.tar.gz) | - |
+            | Linux | [${{ env.PROJECT_NAME }}-linux.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.version_info.outputs.tag_name }}/${{ env.PROJECT_NAME }}-linux.tar.gz) | - |
+            | macOS | [${{ env.PROJECT_NAME }}-macos.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.version_info.outputs.tag_name }}/${{ env.PROJECT_NAME }}-macos.tar.gz) | - |
+
+            ## What's New
+
+            - Cross-platform Qt 6 application
+            - Pre-built packages for Windows, Linux, and macOS
+            - Code quality checks included
+
+            ## System Requirements
+
+            See the included README.md for detailed system requirements and installation instructions.
+
+            ## Build Information
+
+            - Qt Version: ${{ env.QT_VERSION }}
+            - Build Type: ${{ env.BUILD_TYPE }}
+            - C++ Standard: C++17
+
+            ## Code Quality
+
+            Code quality reports are available in the code-quality-reports artifact.
+          files: |
+            release/${{ env.PROJECT_NAME }}-windows-msvc.tar.gz
+            release/${{ env.PROJECT_NAME }}-windows-mingw.tar.gz
+            release/${{ env.PROJECT_NAME }}-linux.tar.gz
+            release/${{ env.PROJECT_NAME }}-macos.tar.gz
+            release/README.md
+          draft: false
+          prerelease: false
+          generate_release_notes: true

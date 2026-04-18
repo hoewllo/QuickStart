@@ -1,0 +1,33 @@
+# Clang-tidy configuration for the project
+
+Checks: >
+  -*,modernize-*, readability-*, performance-*, portability-*, bugprone-*,
+  clang-analyzer-*
+
+WarningsAsErrors: "*"
+HeaderFilterRegex: "include/.*"
+FormatStyle: file
+
+# Exclude files from analysis
+ExcludePatterns:
+  - "VERSION"
+  - "*.version"
+  - "*.ver"
+  - "build/"
+  - "bin/"
+  - "lib/"
+  - "install/"
+  - ".git/"
+  - ".vscode/"
+
+CheckOptions:
+  - key: modernize-use-nullptr
+    value: "1"
+  - key: modernize-use-auto
+    value: "1"
+  - key: modernize-use-using
+    value: "1"
+  - key: readability-braces-around-statements
+    value: "false"
+  - key: readability-identifier-naming
+    value: ".*"
