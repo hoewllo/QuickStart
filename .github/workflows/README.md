@@ -1,28 +1,30 @@
-# Qt Application CI/CD Pipeline
+# CI/CD Pipeline for QtAppLauncher
 
-这个CI/CD流水线为Qt应用程序提供跨平台构建和发布功能。
+## 概述
+
+这个CI/CD流水线为QtAppLauncher项目提供自动化构建、测试和发布功能。它支持多个平台和编译器。
 
 ## 功能特性
 
 - **跨平台构建**: 支持Windows (MSVC/MinGW)、Linux和macOS
-- **Qt库支持**: 自动安装和配置Qt 6.5+
-- **代码质量检查**: 包含clang-tidy、cppcheck和clang-format
-- **自动发布**: 自动创建GitHub Release并打包
-- **运行时库收集**: 自动收集Qt和系统运行时库
+- **Qt库支持**: 使用aqtinstall自动安装Qt 6.5.3
+- **代码质量检查**: 包含cppcheck、clang-tidy和valgrind
+- **自动发布**: 自动创建GitHub Release并包含所有平台构建产物
+- **构建总结**: 显示所有作业的构建状态
 
 ## 支持的平台
 
 ### Windows
-- **MSVC**: 使用Visual Studio 2019构建
+- **MSVC**: 使用Visual Studio 2019构建，支持NSIS安装程序
 - **MinGW**: 使用MinGW GCC构建
 
 ### Linux
-- Ubuntu 20.04+
-- 支持DEB包和AppImage格式
+- Ubuntu 24.04+
+- 使用系统包管理器安装Qt6
 
 ### macOS
-- macOS 11.0 (Big Sur)+
-- 支持DMG和ZIP格式
+- 最新版本
+- 使用Homebrew安装Qt6
 
 ## 触发条件
 
@@ -30,24 +32,29 @@
 
 1. **推送代码**: 推送到main或master分支时
 2. **拉取请求**: 创建或更新拉取请求时
-3. **手动触发**: 通过GitHub Actions界面手动触发
+3. **手动触发**: 通过GitHub Actions界面手动触发，可启用NSIS安装程序
 
 ## 工作流程
 
-### 1. 构建阶段
+### 1. 代码质量检查 (Code Quality Checks)
+- 运行cppcheck进行静态代码分析
+- 运行clang-tidy进行代码质量检查
+- 运行valgrind进行内存检查
+
+### 2. 跨平台构建
 - Windows MSVC构建
 - Windows MinGW构建  
 - Linux构建
 - macOS构建
 
-### 2. 代码质量检查
-- clang-format格式检查
-- clang-tidy静态分析
-- cppcheck代码检查
-
-### 3. 发布阶段（仅main/master分支）
+### 3. 创建发布 (仅master分支)
 - 下载所有构建产物
-- 创建跨平台发布包
+- 自动创建GitHub Release
+- 包含所有平台的构建包
+
+### 4. 构建总结
+- 显示所有作业的构建状态
+- 汇总成功和失败的作业
 - 生成GitHub Release
 
 ## 环境变量

@@ -348,3 +348,74 @@ message(STATUS "UI files: ${UI_FILES_COUNT}")
 message(STATUS "Resource files: ${RESOURCE_FILES_COUNT}")
 message(STATUS "==========================================")
 
+#=============================================================================
+# CPack 配置
+#=============================================================================
+
+# 包含 CPack 模块
+include(InstallRequiredSystemLibraries)
+include(CPack)
+
+# 设置 CPack 变量
+set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
+set(CPACK_PACKAGE_VENDOR "Example Company")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
+set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
+set(CPACK_PACKAGE_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Qt Application Launcher")
+set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+
+# 设置包文件名
+set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}")
+
+# Windows 特定配置
+if(WIN32)
+    # NSIS 配置
+    set(CPACK_NSIS_DISPLAY_NAME "${PROJECT_NAME}")
+    set(CPACK_NSIS_PACKAGE_NAME "${PROJECT_NAME}")
+    set(CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES")
+    set(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/app_icon.ico")
+    set(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/app_icon.ico")
+    set(CPACK_NSIS_HELP_LINK "https://example.com")
+    set(CPACK_NSIS_URL_INFO_ABOUT "https://example.com")
+    set(CPACK_NSIS_CONTACT "support@example.com")
+    
+    # 创建桌面快捷方式
+    set(CPACK_NSIS_CREATE_ICONS_EXTRA "
+        CreateShortCut '$DESKTOP\\\\${PROJECT_NAME}.lnk' '$INSTDIR\\\\bin\\\\${PROJECT_NAME}.exe'
+    ")
+    set(CPACK_NSIS_DELETE_ICONS_EXTRA "
+        Delete '$DESKTOP\\\\${PROJECT_NAME}.lnk'
+    ")
+    
+    # 添加到 PATH
+    set(CPACK_NSIS_MODIFY_PATH ON)
+endif()
+
+# 设置生成器（根据平台）
+if(WIN32)
+    set(CPACK_GENERATOR "ZIP;NSIS")
+elseif(APPLE)
+    set(CPACK_GENERATOR "ZIP;DragNDrop")
+else()
+    set(CPACK_GENERATOR "ZIP;TGZ")
+endif()
+
+# 设置源包生成器
+set(CPACK_SOURCE_GENERATOR "ZIP;TGZ")
+set(CPACK_SOURCE_IGNORE_FILES
+    "/\\\\.git/"
+    "/\\\\.github/"
+    "/build/"
+    "/\\\\.vscode/"
+    "\\\\.swp$"
+    "\\\\.bak$"
+    "\\\\.tmp$"
+)
+
+# 启用 CPack
+set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY 0)
+
