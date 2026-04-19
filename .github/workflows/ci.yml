@@ -1,4 +1,4 @@
-name: CI/CD Pipeline - Merged
+name: CI/CD Pipeline
 
 on:
   push:
@@ -62,7 +62,7 @@ jobs:
     name: Build Windows (MSVC)
     runs-on: windows-latest
     continue-on-error: true
-    needs: [code-quality-checks]
+    needs: [ code-quality-checks ]
 
     steps:
       - name: Checkout repository
@@ -84,15 +84,15 @@ jobs:
         run: |
           # 使用aqtinstall工具安装Qt，更可靠
           pip install aqtinstall
-          
+
           # 安装Qt 6.5.3 for MSVC 2019 64-bit
           aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 -m qtbase qttools qtdeclarative
-          
+
           # 设置环境变量
           $env:QT_DIR = "C:\Qt\6.5.3\msvc2019_64"
           $env:Path = "$env:QT_DIR\bin;$env:Path"
           [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Process)
-          
+
           Write-Host "Qt installed at: $env:QT_DIR"
 
       - name: Configure CMake
@@ -118,7 +118,7 @@ jobs:
         run: |
           cd build/msvc
           $ErrorActionPreference = "Stop"
-          
+
           $enableNsis = "${{ github.event.inputs.enable_nsis }}"
           if ($enableNsis -eq "true") {
               choco install nsis -y
@@ -127,7 +127,7 @@ jobs:
           } else {
               cpack -G ZIP -C Release
           }
-          
+
           Write-Host "Generated packages:"
           Get-ChildItem "*.zip", "*.exe" -ErrorAction SilentlyContinue | ForEach-Object {
             Write-Host "  - $($_.Name)"
@@ -147,7 +147,7 @@ jobs:
     name: Build Windows (MinGW)
     runs-on: windows-latest
     continue-on-error: true
-    needs: [code-quality-checks]
+    needs: [ code-quality-checks ]
 
     steps:
       - name: Checkout repository
@@ -172,11 +172,11 @@ jobs:
           pip install aqtinstall
           # 安装Qt 6.5.3 for MinGW 64-bit
           aqt install-qt windows desktop 6.5.3 win64_mingw -m qtbase qttools qtdeclarative
-          
+
           $env:QT_DIR = "C:\Qt\6.5.3\mingw_64"
           $env:Path = "$env:QT_DIR\bin;$env:Path"
           [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Process)
-          
+
           Write-Host "Qt installed at: $env:QT_DIR"
 
       - name: Configure CMake for MinGW
@@ -196,7 +196,7 @@ jobs:
           cd build/mingw
           $ErrorActionPreference = "Stop"
           cpack -G ZIP -C Release
-          
+
           Write-Host "Generated packages:"
           Get-ChildItem "*.zip" -ErrorAction SilentlyContinue | ForEach-Object {
             Write-Host "  - $($_.Name)"
@@ -216,7 +216,7 @@ jobs:
     name: Build Linux (GCC)
     runs-on: ubuntu-latest
     continue-on-error: true
-    needs: [code-quality-checks]
+    needs: [ code-quality-checks ]
 
     steps:
       - name: Checkout repository
@@ -261,7 +261,7 @@ jobs:
     name: Build macOS (Clang)
     runs-on: macos-latest
     continue-on-error: true
-    needs: [code-quality-checks]
+    needs: [ code-quality-checks ]
 
     steps:
       - name: Checkout repository
@@ -299,14 +299,21 @@ jobs:
   create-release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: 
+    needs:
       [
         build-windows-msvc,
         build-windows-mingw,
         build-linux-gcc,
         build-macos-clang,
       ]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    # 只在推送到master分支且所有依赖构建成功时创建发布
+    if: |
+      github.event_name == 'push' && 
+      github.ref == 'refs/heads/master' &&
+      needs.build-windows-msvc.result == 'success' &&
+      needs.build-windows-mingw.result == 'success' &&
+      needs.build-linux-gcc.result == 'success' &&
+      needs.build-macos-clang.result == 'success'
     permissions:
       contents: write
 
